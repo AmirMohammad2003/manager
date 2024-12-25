@@ -105,7 +105,10 @@ class DotfileManager:
             logging.warning(f"Dotfile {target_path} already exists in the repository. Skipping.")
         else:
             os.makedirs(target_path.parent, exist_ok=True)
-            subprocess.run(["cp", file_path, target_path], check=True)
+            backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+            os.rename(file_path, backup_path)
+            subprocess.run(["cp", backup_path, target_path], check=True)
+            os.symlink(target_path, file_path)
             logging.info(f"Added dotfile: {file_path} -> {target_path}")
             self.update_repo()
 
