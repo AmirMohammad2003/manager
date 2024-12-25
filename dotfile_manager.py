@@ -3,36 +3,47 @@ import subprocess
 import logging
 import json
 import argparse
+from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 class DotfileManager:
-    def __init__(self, repo_url=None, dotfiles_dir='dotfiles', config_file='config.json'):
+    def __init__(self, repo_url=None, dotfiles_dir="dotfiles"):
         self.repo_url = repo_url
-        self.dotfiles_dir = dotfiles_dir
-        self.config_file = config_file
+        self.dotfiles_dir = Path(dotfiles_dir).absolute()
+        self.config_file = Path.home() / ".dotfile"
         self.load_config()
-        if self.repo_url:
-            self.clone_repo()
 
     def load_config(self):
         if os.path.exists(self.config_file):
-            with open(self.config_file, 'r') as f:
+            with open(self.config_file, "r") as f:
                 config = json.load(f)
-                self.repo_url = config.get('repo_url', self.repo_url)
+                self.repo_url = config.get("repo_url", self.repo_url)
+                self.dotfiles_dir = Path(
+                    config.get("dotfiles_dir", self.dotfiles_dir)
+                ).absolute()
         else:
             logging.info(f"No configuration file found at {self.config_file}")
 
     def save_config(self):
-        config = {'repo_url': self.repo_url}
-        with open(self.config_file, 'w') as f:
+        dotfiles_path = str(self.dotfiles_dir.absolute())
+        config = {
+            "repo_url": self.repo_url,
+            "dotfiles_dir": dotfiles_path,
+        }
+        with open(self.config_file, "w+") as f:
             json.dump(config, f)
         logging.info(f"Configuration saved to {self.config_file}")
 
     def clone_repo(self):
         if not os.path.exists(self.dotfiles_dir):
             logging.info(f"Cloning repository {self.repo_url} into {self.dotfiles_dir}")
-            subprocess.run(['git', 'clone', self.repo_url, self.dotfiles_dir], check=True)
+            subprocess.run(
+                ["git", "clone", self.repo_url, self.dotfiles_dir], check=True
+            )
         else:
             logging.info(f"Repository already cloned in {self.dotfiles_dir}")
 
@@ -44,7 +55,9 @@ class DotfileManager:
                 target_path = os.path.expanduser(f"~/{relative_path}")
 
                 if os.path.exists(target_path):
-                    logging.warning(f"Target path {target_path} already exists. Skipping.")
+                    logging.warning(
+                        f"Target path {target_path} already exists. Skipping."
+                    )
                 else:
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
                     os.symlink(dotfile_path, target_path)
@@ -52,25 +65,55 @@ class DotfileManager:
 
     def update_repo(self):
         logging.info(f"Updating repository in {self.dotfiles_dir}")
-        subprocess.run(['git', '-C', self.dotfiles_dir, 'pull'], check=True)
+        subprocess.run(
+            ["git", "-C", self.dotfiles_dir, "add", "."],
+            check=True,
+        )
+        changes = True
+        try:
+            subprocess.run(
+                ["git", "-C", self.dotfiles_dir, "commit", "-m", '"Update config"'],
+                check=True,
+            )
+        except Exception:
+            logging.info("No changes to sync up.")
+            changes = False
 
-    def init_repo(self, repo_url):
-        self.repo_url = repo_url
+        try:
+            subprocess.run(
+                ["git", "-C", self.dotfiles_dir, "pull", "origin", "main", "--rebase"],
+                check=True,
+            )
+        except Exception as e:
+            print(e)
+        if changes:
+            subprocess.run(
+                ["git", "-C", self.dotfiles_dir, "push", "origin", "main"],
+                check=True,
+            )
+
+    def init(self):
         self.clone_repo()
         self.save_config()
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage your dotfiles")
-    parser.add_argument('repo_url', nargs='?', help="GitHub repository URL for your dotfiles")
-    parser.add_argument('--update', action='store_true', help="Update the dotfiles repository")
-    parser.add_argument('--init', action='store_true', help="Initialize with the given repository URL")
+    parser.add_argument(
+        "--sync", action="store_true", help="Update the dotfiles repository"
+    )
+    parser.add_argument("--init", help="Initialize with the given repository URL")
+    parser.add_argument("-d", help="Clone the repository in the given directory")
     args = parser.parse_args()
 
-    manager = DotfileManager(args.repo_url)
-    if args.update:
+    if args.sync:
+        manager = DotfileManager()
         manager.update_repo()
-    elif args.init and args.repo_url:
-        manager.init_repo(args.repo_url)
+    elif args.init is not None and args.d is not None:
+        manager = DotfileManager(
+            args.init,
+        )
+        manager.init()
     else:
-        manager.create_symlinks()
-        manager.save_config()
+        # TODO: print usage
+        pass
