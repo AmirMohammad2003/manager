@@ -169,3 +169,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Temporary or backup files created by dotfile_manager.py
+*.bak
+*.tmp
+
+# Configuration file for dotfile_manager.py
+config.json
