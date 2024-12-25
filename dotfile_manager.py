@@ -112,6 +112,25 @@ class DotfileManager:
             logging.info(f"Added dotfile: {file_path} -> {target_path}")
             self.update_repo()
 
+    def add_folder(self, folder_path):
+        folder_path = Path(folder_path)
+        if not folder_path.is_absolute():
+            folder_path = folder_path.resolve()
+        target_path = self.dotfiles_dir / folder_path.name
+        if target_path.exists():
+            logging.warning(f"Folder {target_path} already exists in the repository. Skipping.")
+        else:
+            os.makedirs(target_path.parent, exist_ok=True)
+            if (folder_path / ".git").exists():
+                subprocess.run(["git", "submodule", "add", folder_path, target_path], check=True)
+                logging.info(f"Added folder as sub-repo: {folder_path} -> {target_path}")
+            else:
+                subprocess.run(["cp", "-r", folder_path, target_path], check=True)
+                logging.info(f"Added folder: {folder_path} -> {target_path}")
+                os.symlink(target_path, folder_path)
+                logging.info(f"Created symlink: {folder_path} -> {target_path}")
+            self.update_repo()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage your dotfiles")
@@ -120,7 +139,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--init", help="Initialize with the given repository URL")
     parser.add_argument("-d", help="Clone the repository in the given directory")
-    parser.add_argument("--add", help="Add a dotfile to the repository")
+    parser.add_argument("--add", help="Add a dotfile or folder to the repository")
     args = parser.parse_args()
 
     if args.sync:
@@ -133,7 +152,11 @@ if __name__ == "__main__":
         manager.init()
     elif args.add:
         manager = DotfileManager()
-        manager.add_dotfile(args.add)
+        add_path = Path(args.add)
+        if add_path.is_dir():
+            manager.add_folder(add_path)
+        else:
+            manager.add_dotfile(add_path)
     else:
         # TODO: print usage
         pass
