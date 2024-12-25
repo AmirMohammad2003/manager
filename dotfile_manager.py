@@ -142,6 +142,8 @@ if __name__ == "__main__":
     parser.add_argument("--add", help="Add a dotfile or folder to the repository")
     args = parser.parse_args()
 
+    script_path = Path(__file__).absolute()
+
     if args.sync:
         manager = DotfileManager()
         manager.update_repo()
