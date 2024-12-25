@@ -2,9 +2,11 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 def main():
-    subprocess.run([sys.executable, "dotfile_manager.py"] + sys.argv[1:])
+    script_path = Path(__file__).parent / "dotfile_manager.py"
+    subprocess.run([sys.executable, str(script_path)] + sys.argv[1:])
 
 if __name__ == "__main__":
     main()
