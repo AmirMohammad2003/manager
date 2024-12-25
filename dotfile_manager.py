@@ -96,6 +96,19 @@ class DotfileManager:
         self.clone_repo()
         self.save_config()
 
+    def add_dotfile(self, file_path):
+        file_path = Path(file_path)
+        if not file_path.is_absolute():
+            file_path = file_path.resolve()
+        target_path = self.dotfiles_dir / file_path.name
+        if target_path.exists():
+            logging.warning(f"Dotfile {target_path} already exists in the repository. Skipping.")
+        else:
+            os.makedirs(target_path.parent, exist_ok=True)
+            subprocess.run(["cp", file_path, target_path], check=True)
+            logging.info(f"Added dotfile: {file_path} -> {target_path}")
+            self.update_repo()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manage your dotfiles")
@@ -104,6 +117,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--init", help="Initialize with the given repository URL")
     parser.add_argument("-d", help="Clone the repository in the given directory")
+    parser.add_argument("--add", help="Add a dotfile to the repository")
     args = parser.parse_args()
 
     if args.sync:
@@ -114,6 +128,9 @@ if __name__ == "__main__":
             args.init,
         )
         manager.init()
+    elif args.add:
+        manager = DotfileManager()
+        manager.add_dotfile(args.add)
     else:
         # TODO: print usage
         pass
