@@ -15,6 +15,8 @@ class DotfileManager:
         self.repo_url = repo_url
         self.dotfiles_dir = Path(dotfiles_dir).absolute()
         self.config_file = Path.home() / ".dotfile"
+        self.meta_data_file = self.dotfiles_dir / "metadata.json"
+        self.meta_data = []
         self.load_config()
 
     def load_config(self):
@@ -25,8 +27,24 @@ class DotfileManager:
                 self.dotfiles_dir = Path(
                     config.get("dotfiles_dir", self.dotfiles_dir)
                 ).absolute()
+                self.meta_data_file = self.dotfiles_dir / "metadata.json"
         else:
             logging.info(f"No configuration file found at {self.config_file}")
+
+    def get_metadata(self):
+        if os.path.exists(self.meta_data_file):
+            with open(self.meta_data_file, "r") as f:
+                self.meta_data = json.load(f)
+        else:
+            self.meta_data = []
+        return self.meta_data
+
+    def add_to_metadata(self, data):
+        data = str(data)
+        self.get_metadata()
+        self.meta_data.append(data)
+        with open(self.meta_data_file, "w") as f:
+            json.dump(self.meta_data, f)
 
     def save_config(self):
         dotfiles_path = str(self.dotfiles_dir.absolute())
@@ -48,20 +66,15 @@ class DotfileManager:
             logging.info(f"Repository already cloned in {self.dotfiles_dir}")
 
     def create_symlinks(self):
-        for root, _, files in os.walk(self.dotfiles_dir):
-            for file in files:
-                dotfile_path = os.path.join(root, file)
-                relative_path = os.path.relpath(dotfile_path, self.dotfiles_dir)
-                target_path = os.path.expanduser(f"~/{relative_path}")
-
-                if os.path.exists(target_path):
-                    logging.warning(
-                        f"Target path {target_path} already exists. Skipping."
-                    )
-                else:
-                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                    os.symlink(dotfile_path, target_path)
-                    logging.info(f"Created symlink: {target_path} -> {dotfile_path}")
+        for file in self.get_metadata():
+            file = Path(file)
+            if os.path.exists(file):
+                logging.warning(f"Target path {file} already exists. Skipping.")
+            else:
+                dotfile_path = self.dotfiles_dir / file.relative_to("/")
+                os.makedirs(os.path.dirname(file), exist_ok=True)
+                os.symlink(dotfile_path, file)
+                logging.info(f"Created symlink: {file} -> {dotfile_path}")
 
     def update_repo(self):
         logging.info(f"Updating repository in {self.dotfiles_dir}")
@@ -91,6 +104,7 @@ class DotfileManager:
                 ["git", "-C", self.dotfiles_dir, "push", "origin", "main"],
                 check=True,
             )
+        self.create_symlinks()
 
     def init(self):
         self.clone_repo()
@@ -100,15 +114,17 @@ class DotfileManager:
         file_path = Path(file_path)
         if not file_path.is_absolute():
             file_path = file_path.resolve()
-        target_path = self.dotfiles_dir / file_path.name
+        target_path = self.dotfiles_dir / file_path.relative_to("/")
         if target_path.exists():
-            logging.warning(f"Dotfile {target_path} already exists in the repository. Skipping.")
+            logging.warning(
+                f"Dotfile {target_path} already exists in the repository. Skipping."
+            )
         else:
+            self.add_to_metadata(file_path)
             os.makedirs(target_path.parent, exist_ok=True)
-            backup_path = file_path.with_suffix(file_path.suffix + ".bak")
+            backup_path = file_path.with_suffix(str(file_path.suffix) + ".bak")
             os.rename(file_path, backup_path)
             subprocess.run(["cp", backup_path, target_path], check=True)
-            os.symlink(target_path, file_path)
             logging.info(f"Added dotfile: {file_path} -> {target_path}")
             self.update_repo()
 
@@ -116,20 +132,26 @@ class DotfileManager:
         folder_path = Path(folder_path)
         if not folder_path.is_absolute():
             folder_path = folder_path.resolve()
-        target_path = self.dotfiles_dir / folder_path.name
+        target_path = self.dotfiles_dir / folder_path.relative_to("/")
         if target_path.exists():
-            logging.warning(f"Folder {target_path} already exists in the repository. Skipping.")
+            logging.warning(
+                f"Folder {target_path} already exists in the repository. Skipping."
+            )
         else:
-            os.makedirs(target_path.parent, exist_ok=True)
             if (folder_path / ".git").exists():
-                subprocess.run(["git", "submodule", "add", folder_path, target_path], check=True)
-                logging.info(f"Added folder as sub-repo: {folder_path} -> {target_path}")
+                # Git repositories aren't supported
+                pass
             else:
+                self.add_to_metadata(folder_path)
+                os.makedirs(target_path.parent, exist_ok=True)
                 subprocess.run(["cp", "-r", folder_path, target_path], check=True)
                 logging.info(f"Added folder: {folder_path} -> {target_path}")
-                os.symlink(target_path, folder_path)
+                # back up the folder
+                subprocess.run(
+                    ["mv", folder_path, str(folder_path) + ".bak"], check=True
+                )
                 logging.info(f"Created symlink: {folder_path} -> {target_path}")
-            self.update_repo()
+                self.update_repo()
 
 
 if __name__ == "__main__":
